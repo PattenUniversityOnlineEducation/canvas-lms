@@ -128,6 +128,14 @@ body.ic-Login-Body { // apply the background to the body element so that you don
   align-items: center;
 }
 
+.pt-login-headerText {
+  display: block;
+  font: 100px;
+  color: white;
+  text-align: direction(right);
+  padding-#{direction(left)}: $ic-sp;
+}
+
 .ic-Login-header__logo {
   flex: 0 0 160px;
   // Fix Firefox bug where flexed container doesn't
