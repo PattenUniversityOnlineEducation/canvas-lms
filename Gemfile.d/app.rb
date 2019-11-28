@@ -52,6 +52,7 @@ gem "aws-sdk-s3", '1.48.0', require: false
 gem "aws-sdk-sns", '1.19.0', require: false
 gem "aws-sdk-sqs", '1.22.0', require: false
 gem "aws-sdk-core", "3.68.1", require: false
+  gem "aws-partitions", "1.238.0", require: false # pinning transient dependency
 gem "aws-sdk-kms", "1.24.0", require: false
 gem "aws-sigv4", "1.1.0", require: false
 
@@ -66,7 +67,7 @@ gem 'canvas_webex', '0.17'
 gem 'inst-jobs', '0.15.14'
   gem 'fugit', '1.3.3', require: false
     gem 'et-orbi', '1.2.2', require: false
-gem 'switchman-inst-jobs', '1.3.6'
+gem 'switchman-inst-jobs', '1.3.7'
 gem 'inst-jobs-autoscaling', '1.0.5'
   gem 'aws-sdk-autoscaling', '1.28.0', require: false
 gem 'ffi', '1.11.1', require: false

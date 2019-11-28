@@ -26,14 +26,20 @@ import I18n from 'i18n!assignments_2_file_upload'
 import LoadingIndicator from '../../shared/LoadingIndicator'
 import {Modal} from '@instructure/ui-overlays'
 import {Mutation} from 'react-apollo'
+import PropTypes from 'prop-types'
 import React, {Component} from 'react'
 import {STUDENT_VIEW_QUERY, SUBMISSION_HISTORIES_QUERY} from '../graphqlData/Queries'
+import StudentViewContext from './Context'
 import {Submission} from '../graphqlData/Submission'
-import theme from '@instructure/canvas-theme'
+import {direction} from '../../../shared/helpers/rtlHelper'
 
 export default class SubmissionManager extends Component {
   static propTypes = {
     assignment: Assignment.shape,
+    focusElement: PropTypes.oneOfType([
+      PropTypes.func,
+      PropTypes.shape({current: PropTypes.instanceOf(Component)})
+    ]),
     submission: Submission.shape
   }
 
@@ -50,7 +56,7 @@ export default class SubmissionManager extends Component {
     })
   }
 
-  getActiveSubmissionTypeFromProps = () => {
+  getActiveSubmissionTypeFromProps() {
     if (this.props.assignment.submissionTypes.length > 1) {
       return this.props.submission?.submissionDraft?.activeSubmissionType || null
     } else {
@@ -129,8 +135,8 @@ export default class SubmissionManager extends Component {
     })
   }
 
-  submitToGraphql = async (submitMutation, submitVars) => {
-    await submitMutation({
+  submitToGraphql(submitMutation, submitVars) {
+    return submitMutation({
       variables: {
         assignmentLid: this.props.assignment._id,
         submissionID: this.props.submission.id,
@@ -139,11 +145,15 @@ export default class SubmissionManager extends Component {
     })
   }
 
-  submitAssignment = async submitMutation => {
+  async submitAssignment(submitMutation) {
     if (this.state.submittingAssignment || this.state.activeSubmissionType === null) {
       return
     }
-    this.setState({submittingAssignment: true})
+    this.setState({submittingAssignment: true}, () => {
+      if (this.props.focusElement) {
+        this.props.focusElement.focus()
+      }
+    })
 
     switch (this.state.activeSubmissionType) {
       case 'media_recording':
@@ -191,7 +201,7 @@ export default class SubmissionManager extends Component {
     this.setState({submittingAssignment: false})
   }
 
-  shouldRenderSubmit = () => {
+  shouldRenderSubmit(context) {
     let activeTypeMeetsCriteria = false
     switch (this.state.activeSubmissionType) {
       case 'media_recording':
@@ -212,11 +222,13 @@ export default class SubmissionManager extends Component {
       this.props.submission.submissionDraft &&
       activeTypeMeetsCriteria &&
       !this.state.uploadingFiles &&
-      !this.state.editingDraft
+      !this.state.editingDraft &&
+      !context.nextButtonEnabled &&
+      !this.props.assignment.lockInfo.isLocked
     )
   }
 
-  handleDraftComplete = success => {
+  handleDraftComplete(success) {
     this.updateUploadingFiles(false)
 
     if (success) {
@@ -226,12 +238,12 @@ export default class SubmissionManager extends Component {
     }
   }
 
-  handleSubmitConfirmation = submitMutation => {
+  handleSubmitConfirmation(submitMutation) {
     this.submitAssignment(submitMutation)
     this.setState({openSubmitModal: false})
   }
 
-  handleSubmitButton = submitMutation => {
+  handleSubmitButton(submitMutation) {
     if (multipleTypesDrafted(this.props.submission)) {
       this.setState({openSubmitModal: true})
     } else {
@@ -239,7 +251,7 @@ export default class SubmissionManager extends Component {
     }
   }
 
-  renderAttemptTab = () => {
+  renderAttemptTab() {
     return (
       <Mutation
         mutation={CREATE_SUBMISSION_DRAFT}
@@ -264,7 +276,7 @@ export default class SubmissionManager extends Component {
     )
   }
 
-  renderSubmitConfirmation = submitMutation => {
+  renderSubmitConfirmation(submitMutation) {
     return (
       <Modal
         data-testid="submission-confirmation-modal"
@@ -308,68 +320,35 @@ export default class SubmissionManager extends Component {
     )
   }
 
-  renderSubmitButton = () => {
-    const outerFooterStyle = {
-      position: 'fixed',
-      bottom: '0',
-      left: '0',
-      right: '0',
-      maxWidth: '1366px',
-      margin: '0 0 0 84px',
-      zIndex: '5'
-    }
-
-    // TODO: Delete this once the better global footers are implemented. This
-    //       is some pretty ghetto stuff to handle the fixed buttom bars (for
-    //       masquarading and beta instances) that would otherwise hide the
-    //       submit button.
-    let paddingOffset = 0
-    if (document.getElementById('masquerade_bar')) {
-      paddingOffset += 52
-    }
-    if (document.getElementById('element_toggler_0')) {
-      paddingOffset += 63
-    }
-
-    const innerFooterStyle = {
-      backgroundColor: theme.variables.colors.white,
-      borderColor: theme.variables.colors.borderMedium,
-      borderTop: `1px solid ${theme.variables.colors.borderMedium}`,
-      textAlign: 'right',
-      margin: `0 ${theme.variables.spacing.medium}`,
-      paddingBottom: `${paddingOffset}px`
-    }
-
+  renderSubmitButton() {
     return (
-      <div style={outerFooterStyle}>
-        <div style={innerFooterStyle}>
-          <Mutation
-            mutation={CREATE_SUBMISSION}
-            onCompleted={data =>
-              data.createSubmission.errors
-                ? this.context.setOnFailure(I18n.t('Error sending submission'))
-                : this.context.setOnSuccess(I18n.t('Submission sent'))
-            }
-            onError={() => this.context.setOnFailure(I18n.t('Error sending submission'))}
-            update={this.clearSubmissionHistoriesCache}
-          >
-            {submitMutation => (
-              <>
-                <Button
-                  id="submit-button"
-                  data-testid="submit-button"
-                  disabled={this.state.submittingAssignment}
-                  variant="primary"
-                  margin="xx-small 0"
-                  onClick={() => this.handleSubmitButton(submitMutation)}
-                >
-                  {I18n.t('Submit')}
-                </Button>
-                {this.state.openSubmitModal && this.renderSubmitConfirmation(submitMutation)}
-              </>
-            )}
-          </Mutation>
-        </div>
+      <div style={{textAlign: direction('right')}}>
+        <Mutation
+          mutation={CREATE_SUBMISSION}
+          onCompleted={data =>
+            data.createSubmission.errors
+              ? this.context.setOnFailure(I18n.t('Error sending submission'))
+              : this.context.setOnSuccess(I18n.t('Submission sent'))
+          }
+          onError={() => this.context.setOnFailure(I18n.t('Error sending submission'))}
+          update={this.clearSubmissionHistoriesCache}
+        >
+          {submitMutation => (
+            <>
+              <Button
+                id="submit-button"
+                data-testid="submit-button"
+                disabled={this.state.submittingAssignment}
+                variant="primary"
+                margin="xx-small 0"
+                onClick={() => this.handleSubmitButton(submitMutation)}
+              >
+                {I18n.t('Submit')}
+              </Button>
+              {this.state.openSubmitModal && this.renderSubmitConfirmation(submitMutation)}
+            </>
+          )}
+        </Mutation>
       </div>
     )
   }
@@ -378,7 +357,11 @@ export default class SubmissionManager extends Component {
     return (
       <>
         {this.state.submittingAssignment ? <LoadingIndicator /> : this.renderAttemptTab()}
-        {this.shouldRenderSubmit() && this.renderSubmitButton()}
+        <StudentViewContext.Consumer>
+          {context => {
+            return this.shouldRenderSubmit(context) ? this.renderSubmitButton() : null
+          }}
+        </StudentViewContext.Consumer>
       </>
     )
   }

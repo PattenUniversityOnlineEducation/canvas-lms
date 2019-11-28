@@ -59,6 +59,8 @@
             </a>
           </li>
           {{/ifAll}}
+
+          {{>ExternalTools/external_tools_menu quizIndexPlacements}}
         </ul>
       </div>
     </div>
@@ -74,6 +76,9 @@
     {{/if}}
   {{/ifAny}}
 </div>
+
+<div id="direct-share-mount-point" />
+<div id="external-tool-mount-point" />
 
 <div class="item-group-container">
   {{#if hasNoQuizzes}}
