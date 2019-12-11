@@ -675,7 +675,7 @@ module Lti
       it 'has substitution for $com.instructure.Course.accept_canvas_resource_types' do
         exp_hash = {test: '$com.instructure.Course.accept_canvas_resource_types'}
         variable_expander.expand_variables!(exp_hash)
-        expect(exp_hash[:test]).to eq ["page", "module"]
+        expect(exp_hash[:test]).to eq "page,module"
       end
 
       it 'has substitution for $com.instructure.Course.canvas_resource_type' do
@@ -693,7 +693,7 @@ module Lti
       it 'has substitution for $com.instructure.Course.available_canvas_resources' do
         exp_hash = {test: '$com.instructure.Course.available_canvas_resources'}
         variable_expander.expand_variables!(exp_hash)
-        expect(exp_hash[:test]).to eq [{"id"=>"1", "name"=>"item 1"}, {"id"=>"2", "name"=>"item 2"}]
+        expect(JSON.parse(exp_hash[:test])).to eq [{"id"=>"1", "name"=>"item 1"}, {"id"=>"2", "name"=>"item 2"}]
       end
 
       context 'context is a group' do
@@ -1316,6 +1316,13 @@ module Lti
           exp_hash = {test: '$com.instructure.Person.name_sortable'}
           variable_expander.expand_variables!(exp_hash)
           expect(exp_hash[:test]).to eq 'Jake, Uncle'
+        end
+
+        it 'has substitution for $com.instructure.Person.pronouns' do
+          user.pronouns = 'She/Her'
+          exp_hash = {test: '$com.instructure.Person.pronouns'}
+          variable_expander.expand_variables!(exp_hash)
+          expect(exp_hash[:test]).to eq 'She/Her'
         end
 
         it 'has substitution for $Person.email.primary' do

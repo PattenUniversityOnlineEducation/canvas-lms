@@ -18,23 +18,6 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-def withGerritCredentials = { Closure command ->
-  withCredentials([
-    sshUserPrivateKey(credentialsId: '44aa91d6-ab24-498a-b2b4-911bcb17cc35', keyFileVariable: 'SSH_KEY_PATH', usernameVariable: 'SSH_USERNAME')
-  ]) { command() }
-}
-
-def fetchFromGerrit = { String repo, String path, String customRepoDestination = null, String sourcePath = null, String sourceRef = null ->
-  withGerritCredentials({ ->
-    println "Fetching ${repo} plugin"
-    sh """
-      mkdir -p ${path}/${customRepoDestination ?: repo}
-      GIT_SSH_COMMAND='ssh -i \"$SSH_KEY_PATH\" -l \"$SSH_USERNAME\"' \
-        git archive --remote=ssh://$GERRIT_URL/${repo} ${sourceRef == null ? 'master' : sourceRef} ${sourcePath == null ? '' : sourcePath} | tar -x -C ${path}/${customRepoDestination ?: repo}
-    """
-  })
-}
-
 def fullSuccessName(name) {
   return "_successes/${env.GERRIT_CHANGE_NUMBER}-${env.GERRIT_PATCHSET_NUMBER}-${name}-success"
 }
@@ -81,8 +64,26 @@ def build_parameters = [
   string(name: 'GERRIT_CHANGE_NUMBER', value: "${env.GERRIT_CHANGE_NUMBER}"),
   string(name: 'GERRIT_PATCHSET_NUMBER', value: "${env.GERRIT_PATCHSET_NUMBER}"),
   string(name: 'GERRIT_EVENT_ACCOUNT_NAME', value: "${env.GERRIT_EVENT_ACCOUNT_NAME}"),
-  string(name: 'GERRIT_EVENT_ACCOUNT_EMAIL', value: "${env.GERRIT_EVENT_ACCOUNT_EMAIL}")
+  string(name: 'GERRIT_EVENT_ACCOUNT_EMAIL', value: "${env.GERRIT_EVENT_ACCOUNT_EMAIL}"),
+  string(name: 'GERRIT_CHANGE_COMMIT_MESSAGE', value: "${env.GERRIT_CHANGE_COMMIT_MESSAGE}"),
+  string(name: 'GERRIT_HOST', value: "${env.GERRIT_HOST}"),
+  string(name: 'GERGICH_PUBLISH', value: "0")
 ]
+
+def getImageTagVersion() {
+  def flags = load 'build/new-jenkins/groovy/commit-flags.groovy'
+  return flags.getImageTagVersion()
+}
+
+def runBuildImageMaybe(save_success, block) {
+  def flags = load 'build/new-jenkins/groovy/commit-flags.groovy'
+  if (flags.hasFlag('skip-docker-build')) {
+    echo "skip building image requested"
+  }
+  else {
+    skipIfPreviouslySuccessful("build-and-push-image", save_success, block)
+  }
+}
 
 pipeline {
   agent { label 'canvas-docker' }
@@ -97,18 +98,20 @@ pipeline {
     GERRIT_PORT = '29418'
     GERRIT_URL = "$GERRIT_HOST:$GERRIT_PORT"
 
-    // 'refs/changes/63/181863/8' -> '63.181863.8'
-    NAME = "${env.GERRIT_REFSPEC}".minus('refs/changes/').replaceAll('/','.')
+    NAME = getImageTagVersion()
     PATCHSET_TAG = "$DOCKER_REGISTRY_FQDN/jenkins/canvas-lms:$NAME"
     MERGE_TAG = "$DOCKER_REGISTRY_FQDN/jenkins/canvas-lms:$GERRIT_BRANCH"
     CACHE_TAG = "canvas-lms:previous-image"
+    POSTGRES_CACHE_TAG = "canvas-lms:previous-postgres-image"
+    CASSANDRA_CACHE_TAG = "canvas-lms:previous-cassandra-image"
+    DYNAMODB_CACHE_TAG = "canvas-lms:previous-dynamodb-image"
   }
 
   stages {
     stage('Print Env Variables') {
       steps {
         timeout(time: 20, unit: 'SECONDS') {
-        sh 'printenv | sort'
+          sh 'printenv | sort'
         }
       }
     }
@@ -117,28 +120,20 @@ pipeline {
       steps {
         timeout(time: 3) {
           script {
-            /* send message to gerrit */
-            withGerritCredentials({ ->
-              sh '''
-                gerrit_message="\u2615 $JOB_BASE_NAME build started.\nTag: canvas-lms:$NAME\n$BUILD_URL"
-                ssh -i "$SSH_KEY_PATH" -l "$SSH_USERNAME" -p $GERRIT_PORT \
-                hudson@$GERRIT_HOST gerrit review -m "'$gerrit_message'" $GERRIT_CHANGE_NUMBER,$GERRIT_PATCHSET_NUMBER
-              '''
-            })
-
-            fetchFromGerrit('gerrit_builder', '.', '', 'canvas-lms/config')
+            def credentials = load 'build/new-jenkins/groovy/credentials.groovy'
+            credentials.fetchFromGerrit('gerrit_builder', '.', '', 'canvas-lms/config')
             gems = readFile('gerrit_builder/canvas-lms/config/plugins_list').split()
             println "Plugin list: ${gems}"
             /* fetch plugins */
             gems.each { gem ->
               if (env.GERRIT_PROJECT == gem) {
                 /* this is the commit we're testing */
-                fetchFromGerrit(gem, 'gems/plugins', null, null, env.GERRIT_REFSPEC)
+                credentials.fetchFromGerrit(gem, 'gems/plugins', null, null, env.GERRIT_REFSPEC)
               } else {
-                fetchFromGerrit(gem, 'gems/plugins')
+                credentials.fetchFromGerrit(gem, 'gems/plugins')
               }
             }
-            fetchFromGerrit('qti_migration_tool', 'vendor', 'QTIMigrationTool')
+            credentials.fetchFromGerrit('qti_migration_tool', 'vendor', 'QTIMigrationTool')
             sh '''
               mv gerrit_builder/canvas-lms/config/* config/
               mv config/knapsack_rspec_report.json ./
@@ -161,7 +156,8 @@ pipeline {
       steps {
         timeout(time: 2) {
           script {
-            withGerritCredentials({ ->
+            def credentials = load 'build/new-jenkins/groovy/credentials.groovy'
+            credentials.withGerritCredentials({ ->
               sh '''
                 GIT_SSH_COMMAND='ssh -i \"$SSH_KEY_PATH\" -l \"$SSH_USERNAME\"' \
                   git fetch origin $GERRIT_BRANCH
@@ -194,7 +190,7 @@ pipeline {
 
     stage('Build Image') {
       steps {
-        skipIfPreviouslySuccessful("build-and-push-image", save = false) {
+        runBuildImageMaybe(false) {
           timeout(time: 36) { /* this timeout is `2 * average build time` which currently: 18m * 2 = 36m */
             dockerCacheLoad(image: "$CACHE_TAG")
             sh '''
@@ -208,7 +204,7 @@ pipeline {
 
     stage('Publish Patchset Image') {
       steps {
-        skipIfPreviouslySuccessful("build-and-push-image") {
+        runBuildImageMaybe(true) {
           timeout(time: 5) {
             // always push the patchset tag otherwise when a later
             // patchset is merged this patchset tag is overwritten
@@ -225,20 +221,26 @@ pipeline {
           steps {
             skipIfPreviouslySuccessful("smoke-test") {
               timeout(time: 10) {
-                sh 'build/new-jenkins/docker-compose-pull.sh'
-                sh 'build/new-jenkins/docker-compose-pull-selenium.sh'
-                sh 'build/new-jenkins/docker-compose-build-up.sh'
-                sh 'build/new-jenkins/docker-compose-create-migrate-database.sh'
-                sh 'build/new-jenkins/smoke-test.sh'
+                script {
+                  sh 'build/new-jenkins/docker-compose-pull-selenium.sh'
+                  def dbCommon = load 'build/new-jenkins/groovy/cache-migrations.groovy'
+                  dbCommon.createMigrateBuildUpCached()
+                  sh 'build/new-jenkins/smoke-test.sh'
+                  if (env.GERRIT_EVENT_TYPE == 'change-merged') {
+                    dbCommon.storeMigratedImages()
+                  }
+                }
               }
             }
           }
         }
+
         stage('Linters') {
           steps {
             skipIfPreviouslySuccessful("linters") {
               build(
                 job: 'test-suites/linters',
+                propagate: false,
                 parameters: build_parameters
               )
             }
@@ -250,6 +252,19 @@ pipeline {
             skipIfPreviouslySuccessful("vendored-gems") {
               build(
                 job: 'test-suites/vendored-gems',
+                parameters: build_parameters
+              )
+            }
+          }
+        }
+
+        stage('JS') {
+          steps {
+            skipIfPreviouslySuccessful("js") {
+              // propagate set to false until we can get tests passing
+              build(
+                job: 'test-suites/JS',
+                propagate: false,
                 parameters: build_parameters
               )
             }
@@ -310,18 +325,6 @@ pipeline {
  *         }
  *       }
  *
- *       stage('Frontend') {
- *         steps {
- *           skipIfPreviouslySuccessful("frontend") {
- *             // propagate set to false until we can get tests passing
- *             build(
- *               job: 'test-suites/frontend',
- *               propagate: false,
- *               parameters: build_parameters
- *             )
- *           }
- *         }
- *       }
  *
  *       stage('Xbrowser') {
  *         steps {
@@ -340,16 +343,15 @@ pipeline {
     }
 
     stage('Publish Merged Image') {
+      when { expression { env.GERRIT_EVENT_TYPE == 'change-merged' } }
       steps {
-        timeout(time: 5) {
+        timeout(time: 10) {
           script {
-            if (env.GERRIT_EVENT_TYPE == 'change-merged') {
-              sh '''
-                docker tag $PATCHSET_TAG $MERGE_TAG
-                docker push $MERGE_TAG
-              '''
-              dockerCacheStore(image: "$CACHE_TAG")
-            }
+            sh '''
+              docker tag $PATCHSET_TAG $MERGE_TAG
+              docker push $MERGE_TAG
+            '''
+            dockerCacheStore(image: "$CACHE_TAG")
           }
         }
       }
@@ -357,32 +359,18 @@ pipeline {
   }
 
   post {
-    success {
+    failure {
       script {
-        withGerritCredentials({ ->
-          sh '''
-            gerrit_message="\u2713 $JOB_BASE_NAME build successful.\nTag: canvas-lms:$NAME\n$BUILD_URL"
-            ssh -i "$SSH_KEY_PATH" -l "$SSH_USERNAME" -p $GERRIT_PORT \
-              hudson@$GERRIT_HOST gerrit review -m "'$gerrit_message'" $GERRIT_CHANGE_NUMBER,$GERRIT_PATCHSET_NUMBER
-          '''
-        })
+        if ( env.GERRIT_EVENT_TYPE == 'change-merged' ) {
+          slackSend (channel: '#canvas_builds',
+            color: '#da0005',
+            message: "${env.JOB_NAME} failed on merge (<${env.BUILD_URL}|${env.BUILD_NUMBER}>)")
+        }
       }
     }
-
-    unsuccessful {
-      script {
-        withGerritCredentials({ ->
-          sh '''
-            gerrit_message="\u274C $JOB_BASE_NAME build failed.\nTag: canvas-lms:$NAME\n$BUILD_URL"
-            ssh -i "$SSH_KEY_PATH" -l "$SSH_USERNAME" -p $GERRIT_PORT \
-              hudson@$GERRIT_HOST gerrit review -m "'$gerrit_message'" $GERRIT_CHANGE_NUMBER,$GERRIT_PATCHSET_NUMBER
-          '''
-        })
-      }
-    }
-
     cleanup {
         sh 'build/new-jenkins/docker-cleanup.sh'
     }
   }
 }
+
