@@ -1,11 +1,11 @@
 development:
   address: "smtpdm-ap-southeast-1.aliyun.com"
   port: "25"
-  user_name: "pattenuniversity"
-  password: "PUadmin123"
+  user_name: "noreply@studychain.app"
+  password: "PUadmin123456"
   authentication: "plain" # plain, login, or cram_md5
   domain: "studychain.app"
-  outgoing_address: "pattenuniversity@studychain.app"
+  outgoing_address: "noreply@studychain.app"
   default_name: "Patten University Official"
 
 # or to use sendmail --
