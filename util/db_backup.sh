@@ -9,7 +9,7 @@ export TARGET_DOCKER=d48fd120ae5f
 echo ">>Start database transfering."
 echo ">>At time $TIME"
 
-echo ">>Source: $SOURCE_IP : $SOUECE_DOCKER"
+echo ">>Source: $SOURCE_IP : $SOURCE_DOCKER"
 echo ">>Destination: $TARGET_IP: $TARGET_DOCKER"
 
 ssh -t -i id_rsa_aliyun_pu chengma@$SOURCE_IP "
