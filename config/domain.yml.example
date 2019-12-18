@@ -2,7 +2,7 @@ test:
   domain: localhost
 
 development:
-  domain: "47.75.190.40:3000"
+  domain: "online.studychain.app"
 
 production:
   domain: "canvas.example.com"
