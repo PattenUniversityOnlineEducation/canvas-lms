@@ -871,6 +871,9 @@ CanvasRails::Application.routes.draw do
   root to: 'users#user_dashboard', as: 'root', via: :get
   # backwards compatibility with the old /dashboard url
   get 'dashboard' => 'users#user_dashboard', as: :dashboard_redirect
+  get 'linqdashboard' => 'linq_dashboard#home'
+
+  resources :linq_dashboard
 
   # Thought this idea of having dashboard-scoped urls was a good idea at the
   # time... now I'm not as big a fan.
@@ -891,6 +894,7 @@ CanvasRails::Application.routes.draw do
   resources :plugins, only: [:index, :show, :update]
 
   get 'calendar' => 'calendars#show'
+  # get 'calendar' => 'linq_dashboard#home'
   get 'calendar2' => 'calendars#show'
   get 'course_sections/:course_section_id/calendar_events/:id' => 'calendar_events#show', as: :course_section_calendar_event
   get 'files' => 'files#index'

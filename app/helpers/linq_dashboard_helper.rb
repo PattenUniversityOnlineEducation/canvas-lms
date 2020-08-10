@@ -1,0 +1,2 @@
+module LinqDashboardHelper
+end
