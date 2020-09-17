@@ -131,7 +131,7 @@ gem 'academic_benchmarks', '0.0.11', require: false
 gem 'graphql', '1.9.11'
 gem 'graphql-batch', '0.4.1'
 
-gem 'prawn-rails', '1.3.0'
+# gem 'prawn-rails', '1.3.0'
 
 gem 'redcarpet', '3.5.0', require: false
 

@@ -17,4 +17,5 @@
 
 group :postgres do
   gem 'pg', '1.1.4'
+  gem 'mysql2', '0.5.3'
 end
